@@ -130,18 +130,33 @@ derived from the stop-level model rather than its own thing.
 
 ## Buckets and cold start
 
-30-min time buckets. Weekday/weekend split only for now, no per-weekday
-breakdown yet, don't have the volume to support that split without the
-estimates getting noisy.
+Weekday/weekend split only for now, no per-weekday breakdown yet,
+don't have the volume to support that split without the estimates
+getting noisy.
+
+Tested bucket size against synthetic data before waiting on real
+collection to find out the hard way. Generated fake stop events shaped
+like the real measured percentiles (see generate_synthetic.py), 18
+days, both routes, 8 stops each. At 30-min buckets: 2201 total cells,
+median n per cell was only 6, and just 272 of them (12.4%) cleared
+N=20. At 60-min buckets: 1156 cells, median n=11, 354 cleared N=20
+(30.6%).
+
+So 30-min buckets were too fine for how this data actually spreads
+out, most cells would sit at "not enough data yet" for a long time.
+Switching the default to 60-min buckets. Loses some time-of-day
+resolution (can't tell 8:00 from 8:30 apart anymore) but gets useful
+output much sooner. This was tested on synthetic data built from
+guessed parameters though, not real NX1/NX2 traffic, so the actual
+numbers could land differently once there's real data to check against.
+Worth re-running this same comparison once a real week or two of
+ingestion has built up, the synthetic generator's trip counts and hour
+weighting are rough guesses, not measured.
 
 Minimum N=20 observations per (route, direction, stop, day_type, bucket)
 cell before showing a real status. Below that it just says "not enough
-data yet."
-
-Picked 30 min and N=20 off general reasoning about how much you need
-before a median/IQR stops jumping around, not from NX1/NX2 data
-specifically, haven't run ingestion long enough yet to check if these
-actually make sense for these two routes. Will know more in a few days.
+data yet." Haven't stress tested whether 20 is actually the right
+number yet either, just a starting point.
 
 ## Status logic
 
