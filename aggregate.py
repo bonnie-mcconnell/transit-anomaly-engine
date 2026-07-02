@@ -144,39 +144,82 @@ def evaluate_observation(delay, baseline):
 
 
 def summarize(cells):
+    """
+    Compute baselines for every cell and return a structured summary.
+    Returns both the status counts and the full list of computed baselines
+    for cells that passed the cold-start threshold.
+    """
     statuses = defaultdict(int)
-    sample_cell = None
+    ready = []
 
     for cell_key, observations in cells.items():
         baseline = compute_baseline(observations)
         statuses[baseline["status"]] += 1
-        if baseline["status"] == "ok" and sample_cell is None:
-            sample_cell = (cell_key, baseline)
+        if baseline["status"] == "ok":
+            ready.append((cell_key, baseline))
 
-    return statuses, sample_cell
+    return statuses, ready
 
 
 if __name__ == "__main__":
     db_path = sys.argv[1] if len(sys.argv) > 1 else "synthetic_test.db"
-    print(f"running against {db_path}")
+    print(f"running against {db_path}\n")
 
     conn = sqlite3.connect(db_path)
     cells = load_observations(conn)
+    conn.close()
 
-    print(f"total cells: {len(cells)}")
-    statuses, sample = summarize(cells)
+    print(f"total cells seen: {len(cells)}")
+    statuses, ready = summarize(cells)
     for status, count in statuses.items():
         print(f"  {status}: {count}")
 
-    if sample:
-        cell_key, baseline = sample
-        route, direction, stop, dtype, bucket = cell_key
-        print(f"\nExample cell: route={route} dir={direction} stop={stop} {dtype} bucket={bucket}")
-        print(f"  n={baseline['n']}, n_baseline={baseline['n_baseline']}")
-        print(f"  median={baseline['median']}, iqr=[{baseline['iqr_low']}, {baseline['iqr_high']}]")
+    if not ready:
+        print("\nno cells have enough data yet")
+        sys.exit(0)
 
-        for test_delay in (50, 400, 800, 5000):
-            result = evaluate_observation(test_delay, baseline)
-            print(f"  if a new observation came in at delay={test_delay}: {result}")
+    medians = sorted(b["median"] for _, b in ready)
+    iqr_widths = sorted(b["iqr_high"] - b["iqr_low"] for _, b in ready)
+    ns = sorted(b["n"] for _, b in ready)
 
-    conn.close()
+    def pct_val(lst, pct):
+        idx = min(int(len(lst) * pct / 100), len(lst) - 1)
+        return lst[idx]
+
+    print(f"\nmedian delay distribution across {len(ready)} ready cells (seconds):")
+    for pct in (10, 25, 50, 75, 90):
+        print(f"  p{pct}: {pct_val(medians, pct):.0f}s")
+    print(f"  min: {medians[0]:.0f}s   max: {medians[-1]:.0f}s")
+
+    print(f"\nIQR width distribution (iqr_high - iqr_low, seconds):")
+    for pct in (10, 25, 50, 75, 90):
+        print(f"  p{pct}: {pct_val(iqr_widths, pct):.0f}s")
+
+    print(f"\nsamples per cell:")
+    for pct in (25, 50, 75, 90):
+        print(f"  p{pct}: {pct_val(ns, pct)}")
+    print(f"  max: {ns[-1]}")
+
+    # show the 3 cells with highest median and 3 with lowest, as a
+    # sanity check for anything obviously wrong at the extremes
+    by_median = sorted(ready, key=lambda x: x[1]["median"])
+    print("\n3 cells with lowest median delay:")
+    for key, b in by_median[:3]:
+        route, direction, stop, dtype, bucket = key
+        print(f"  {route} dir={direction} stop={stop} {dtype} bucket={bucket}")
+        print(f"    n={b['n']} median={b['median']:.0f}s iqr=[{b['iqr_low']:.0f}, {b['iqr_high']:.0f}]")
+
+    print("\n3 cells with highest median delay:")
+    for key, b in by_median[-3:]:
+        route, direction, stop, dtype, bucket = key
+        print(f"  {route} dir={direction} stop={stop} {dtype} bucket={bucket}")
+        print(f"    n={b['n']} median={b['median']:.0f}s iqr=[{b['iqr_low']:.0f}, {b['iqr_high']:.0f}]")
+
+    # optional full cell dump for inspection
+    if "--dump-cells" in sys.argv:
+        print("\nall ready cells sorted by median delay:")
+        for key, b in by_median:
+            route, direction, stop, dtype, bucket = key
+            print(f"  {route} dir={direction} {dtype} bucket={bucket} "
+                  f"stop={stop} n={b['n']} median={b['median']:.0f}s "
+                  f"iqr=[{b['iqr_low']:.0f}, {b['iqr_high']:.0f}]")

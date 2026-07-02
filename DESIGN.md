@@ -207,3 +207,40 @@ isn't tied to SQLite specifically if this needs to move later.
   to show
 - what to actually do with is_extreme rows once there's enough of
   them to look at as a group instead of one at a time
+
+## Real findings so far (updated 03/07)
+
+First real aggregate.py run against transit.db after ~4 days of
+collection (29,595 rows, 569 successful polls, 204 cells over N=20).
+
+One thing that jumped out immediately: a cluster of NX2 dir=0 cells
+at stop 7147-4e9003b4 showing median delays of -400s to -550s across
+every time bucket. Looked alarming. Looked it up, it's "Stop E
+Auckland Universities", the city-centre terminus for NX2. A bus
+arriving consistently early at its final stop isn't the same thing as
+a bus arriving early at a mid-route stop where a commuter is waiting.
+At a terminus, early arrival just means the driver made good time.
+This stop should probably be excluded from the status display, or at
+minimum treated differently, since the "running early" signal isn't
+actionable or meaningful there.
+
+This is a real limitation: the current model doesn't know which stops
+are terminus stops. Worth fixing later by pulling route shape/stop
+sequence data from the static API, but not blocking anything for now.
+
+The actually interesting finding: NX1 dir=1 (southbound, inbound
+toward the city) shows a consistent and large delay pattern at
+specific stops during afternoon peak. At bucket=17 (5-6pm Auckland
+time), several stops show medians of 400-504 seconds (7-8 minutes
+late), with tight IQRs suggesting this is repeatable, not random.
+The pattern gets worse from bucket=16 to bucket=17, which looks like
+delay accumulating as the peak deepens rather than one-off incidents.
+Stop names pending lookup (see lookup_stops.py), but the pattern
+shows up across at least 4-5 distinct stops on the same run, which
+makes it much more credible than a single-stop artifact.
+
+Also found and fixed a timezone bug in aggregate.py and check_health.py
+during this session: polled_at is stored UTC, Auckland is UTC+12 in
+winter, so every cell was being bucketed 12 hours wrong. Fixed with
+zoneinfo. The raw data in transit.db is fine (UTC timestamps are
+correct), the error was only in the analysis layer.
