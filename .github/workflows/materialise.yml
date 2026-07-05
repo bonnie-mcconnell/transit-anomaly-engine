@@ -1,0 +1,28 @@
+name: nightly materialise
+
+on:
+  schedule:
+    # 3am UTC = 3-4pm NZ time depending on daylight saving.
+    # Runs after a full day of collection has landed in Supabase.
+    - cron: "0 3 * * *"
+  # Allow manual trigger for testing or if a nightly run fails
+  workflow_dispatch:
+
+jobs:
+  materialise:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: install dependencies
+        run: pip install -r requirements.txt
+
+      - name: run materialise
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python materialise.py
