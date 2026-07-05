@@ -1,6 +1,7 @@
 requests==2.34.2
 python-dotenv==1.2.2
-# tzdata is only strictly needed on Windows, where zoneinfo has no
-# system timezone database to fall back on. Including it here
-# unconditionally since it's small and makes the setup portable.
+flask==3.1.0
+gunicorn==23.0.0
+psycopg2-binary==2.9.10
+# tzdata needed on Windows where zoneinfo has no system timezone database
 tzdata

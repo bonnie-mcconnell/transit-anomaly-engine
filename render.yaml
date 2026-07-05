@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: transit-anomaly-engine
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 1 --timeout 30
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: AT_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
