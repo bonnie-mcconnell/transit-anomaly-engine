@@ -171,76 +171,90 @@ Tiers, picked by feel not derived from anything:
 > 95th: significantly delayed
 N < 20: not enough data
 
-## Ingestion
+## Ingestion and architecture
 
-ingest.py does one poll and exits, writes to a local SQLite file
-(transit.db), and is triggered every 3 minutes by Windows Task
-Scheduler rather than running its own loop. Went with single-shot plus
-external scheduling instead of a long-lived process because it
-survives sleep/wake and doesn't need a terminal window open for days.
+ingest.py does one poll and exits, triggered every 3 minutes by
+Windows Task Scheduler. Went with single-shot plus external scheduling
+instead of a long-lived process because it survives sleep/wake and
+doesn't need a terminal window open for days.
 
-Stores both raw_stop_events and a poll_log table, the second one just
-records whether each attempt succeeded and how many rows it wrote, so
-gaps in collection (missed polls, laptop asleep, no wifi) can actually
-be checked later instead of just assumed away. There's a unique
-constraint on (trip_id, stop_id, polled_at) to stop a single poll's
-result from inserting the same row twice, but that doesn't fully cover
-Task Scheduler double-firing the whole script, since two separate
-processes get two different timestamps. Set "do not start a new
-instance if already running" in the task's settings for that, the
-database can't solve it on its own.
+The database is Supabase Postgres in production, with the same schema
+accessible locally via SQLite for development and testing. db.py
+handles this: if DATABASE_URL looks like a postgres URL it uses
+psycopg2, otherwise treats the value as a SQLite file path. Nothing
+else in the codebase imports sqlite3 or psycopg2 directly.
 
-Known gap: if the laptop is fully off or off wifi when a trigger fires,
-that poll is just missed, no retry queue. Task Scheduler's "run as
-soon as possible after a missed start" helps but won't catch everything.
-Not fixing this properly right now, just noting it so any gaps in the
-collected data later aren't a surprise.
+Baseline computation runs nightly on GitHub Actions (materialise.py),
+not on the laptop or on Render. GitHub Actions is free for public
+repos and doesn't require any always-on server for a scheduled job.
 
-SQLite chosen over Postgres/Supabase for now. Two routes is not much
-data and zero setup beats hosted infrastructure at this stage. Schema
-isn't tied to SQLite specifically if this needs to move later.
+The dashboard runs on Render's free web service. Free web services on
+Render spin down after 15 minutes of inactivity; a separate GitHub
+Actions workflow pings the URL every 10 minutes during Auckland waking
+hours to keep it alive.
+
+Known gap: when the laptop is fully off or off wifi, ingest polls are
+missed. Task Scheduler's "run as soon as possible after a missed start"
+catches most short gaps but not multi-hour overnight ones. This is
+documented, accepted, and shows up visibly in poll_log.
 
 ## Not decided yet
 
 - how long to keep raw rows before pruning to aggregates
-- frontend, not touching this until there's a real backlog of data
-  to show
-- what to actually do with is_extreme rows once there's enough of
-  them to look at as a group instead of one at a time
+- whether the is_extreme flag should influence the dashboard display
+  differently once there are enough extreme rows to look at as a group
+- terminus stops: the current model doesn't know which stops are route
+  endpoints, so a bus arriving early at its final stop looks like
+  "running early" rather than being filtered out. Worth fixing by
+  pulling stop sequence data from the static API, but not urgent.
 
-## Real findings so far (updated 03/07)
+## Real findings so far (updated 05/07)
 
 First real aggregate.py run against transit.db after ~4 days of
 collection (29,595 rows, 569 successful polls, 204 cells over N=20).
 
 One thing that jumped out immediately: a cluster of NX2 dir=0 cells
 at stop 7147-4e9003b4 showing median delays of -400s to -550s across
-every time bucket. Looked alarming. Looked it up, it's "Stop E
-Auckland Universities", the city-centre terminus for NX2. A bus
-arriving consistently early at its final stop isn't the same thing as
-a bus arriving early at a mid-route stop where a commuter is waiting.
-At a terminus, early arrival just means the driver made good time.
-This stop should probably be excluded from the status display, or at
-minimum treated differently, since the "running early" signal isn't
-actionable or meaningful there.
+every time bucket. Looked it up, it's "Stop E Auckland Universities",
+the city-centre terminus for NX2. A bus arriving consistently early
+at its final stop isn't the same thing as a bus arriving early at a
+mid-route stop where a commuter is waiting. At a terminus, early
+arrival just means the driver made good time. This stop should
+probably be excluded from the status display, or treated differently,
+since the "running early" signal isn't actionable there.
 
 This is a real limitation: the current model doesn't know which stops
-are terminus stops. Worth fixing later by pulling route shape/stop
-sequence data from the static API, but not blocking anything for now.
+are terminus stops. Worth fixing later by pulling route stop sequence
+data from the static API, but not blocking anything for now.
 
-The actually interesting finding: NX1 dir=1 (southbound, inbound
-toward the city) shows a consistent and large delay pattern at
-specific stops during afternoon peak. At bucket=17 (5-6pm Auckland
-time), several stops show medians of 400-504 seconds (7-8 minutes
-late), with tight IQRs suggesting this is repeatable, not random.
-The pattern gets worse from bucket=16 to bucket=17, which looks like
-delay accumulating as the peak deepens rather than one-off incidents.
-Stop names pending lookup (see lookup_stops.py), but the pattern
-shows up across at least 4-5 distinct stops on the same run, which
-makes it much more credible than a single-stop artifact.
+The actually interesting finding: NX1 dir=1 (northbound, away from
+the city toward the Shore) shows a consistent delay pattern at busway
+stations during afternoon peak. At bucket=17 (5-6pm Auckland time):
+
+  Constellation (Stop B):  median +504s (~8.4 min late), IQR [408, 572]
+  Akoranga (Stop B):        median +433s (~7.2 min late), IQR [355, 474]
+  Smales Farm (Stop B):     median +420s (~7.0 min late), IQR [305, 529]
+  Sunnynook (Stop B):       median +384s (~6.4 min late), IQR [260, 460]
+
+These are all Northern Busway stations in northbound order, and delay
+increases progressively from south to north, which is what accumulated
+congestion along a route looks like. The pattern worsens from bucket=16
+to bucket=17 (4-5pm vs 5-6pm), consistent with delay building as the
+peak deepens rather than random incidents.
+
+The tight IQRs on these cells (e.g. Constellation's IQR of [408, 572]
+means half of all observed trips fell between 7 and 9.5 minutes late)
+mean this is a repeatable structural pattern, not noise. A commuter
+catching the NX1 northbound at Constellation at 5pm should reliably
+budget an extra 8 minutes.
+
+City-end stops (Fanshawe St/Victoria Park, Lower Albert) show much
+lower median delays at the same time buckets, consistent with the bus
+starting each trip roughly on schedule and accumulating delay along the
+route rather than starting late.
 
 Also found and fixed a timezone bug in aggregate.py and check_health.py
 during this session: polled_at is stored UTC, Auckland is UTC+12 in
 winter, so every cell was being bucketed 12 hours wrong. Fixed with
-zoneinfo. The raw data in transit.db is fine (UTC timestamps are
-correct), the error was only in the analysis layer.
+zoneinfo. The raw data in transit.db is fine, the error was only in
+the analysis layer.
