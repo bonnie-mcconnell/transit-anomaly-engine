@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from collections import defaultdict
 
-from aggregate import (
+from exploration.aggregate import (
     load_observations,
     compute_baseline,
     BUCKET_MINUTES,
