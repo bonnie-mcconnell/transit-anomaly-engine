@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NX1 / NX2 delays</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0f0f;
+      --surface:   #161919;
+      --border:    #242828;
+      --text:      #e8eaea;
+      --muted:     #5a6060;
+      --amber:     #f0a500;
+      --green:     #22c55e;
+      --yellow:    #f59e0b;
+      --red:       #ef4444;
+      --grey:      #4b5563;
+      --mono:      'JetBrains Mono', monospace;
+      --sans:      'Inter', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      align-items: baseline;
+      gap: 24px;
+    }
+
+    .wordmark {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--amber);
+      text-transform: uppercase;
+    }
+
+    .header-meta {
+      font-size: 12px;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+
+    #update-time {
+      margin-left: auto;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 32px 64px;
+    }
+
+    .section-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+      margin-top: 32px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+
+    tbody tr:hover {
+      background: var(--surface);
+    }
+
+    td {
+      padding: 10px 12px;
+      vertical-align: middle;
+    }
+
+    .col-route {
+      width: 80px;
+      color: var(--amber);
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    .col-dir {
+      width: 100px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .col-stop {
+      color: var(--text);
+    }
+
+    .col-delay {
+      width: 110px;
+      text-align: right;
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .col-pct {
+      width: 80px;
+      text-align: right;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .col-status {
+      width: 100px;
+      text-align: right;
+    }
+
+    .delay-normal  { color: var(--green); }
+    .delay-late    { color: var(--yellow); }
+    .delay-very-late { color: var(--red); }
+    .delay-nodata  { color: var(--grey); }
+    .delay-extreme { color: var(--red); }
+
+    .badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 7px;
+      border-radius: 3px;
+    }
+
+    .badge-normal   { background: rgba(34,197,94,0.12);  color: var(--green); }
+    .badge-late     { background: rgba(245,158,11,0.12); color: var(--yellow); }
+    .badge-very-late { background: rgba(239,68,68,0.12); color: var(--red); }
+    .badge-nodata   { background: rgba(75,85,99,0.15);   color: var(--grey); }
+    .badge-extreme  { background: rgba(239,68,68,0.12);  color: var(--red); }
+
+    .flash {
+      animation: flash 0.4s ease-out;
+    }
+
+    @keyframes flash {
+      0%   { opacity: 0.3; }
+      100% { opacity: 1; }
+    }
+
+    #error-bar {
+      display: none;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      color: var(--red);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 10px 16px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+
+    #loading {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 40px 0;
+    }
+
+    .empty-note {
+      color: var(--muted);
+      font-size: 12px;
+      padding: 12px;
+      font-family: var(--mono);
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 20px 32px;
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+
+    footer a { color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="wordmark">NX delay tracker</span>
+  <span class="header-meta">Auckland Northern Express &nbsp;/&nbsp; NX1 &middot; NX2</span>
+  <span id="update-time">loading...</span>
+</header>
+
+<main>
+  <div id="error-bar"></div>
+  <div id="loading">fetching live data...</div>
+  <div id="board" style="display:none"></div>
+</main>
+
+<footer>
+  Baselines built from AT GTFS-RT data. Delay is percentile-ranked against
+  historical observations for each stop at this hour of day. &nbsp;&middot;&nbsp;
+  <a href="https://github.com/bonnie-mcconnell/transit-anomaly-engine" target="_blank">source</a>
+</footer>
+
+<script>
+const STOP_NAMES = {
+  "4200-3b3da5cd": "Constellation",
+  "3355-dbd9aecd": "Smales Farm",
+  "4063-7dff9dde": "Akoranga",
+  "3221-7da3d572": "Sunnynook",
+  "4227-0e16a7e9": "Albany",
+  "7036-f1ffa0be": "Fanshawe St / Victoria Park",
+  "1002-c8bb8209": "Lower Albert",
+  "7034-7b36cf5b": "Bradnor Lane",
+  "4981-ecc5b741": "Hibiscus Coast",
+  "1003-ea94d2b2": "Lower Albert (Stop B)",
+  "7147-4e9003b4": "Auckland Universities",
+  "4222-1f71df5f": "Smales Farm (Stop A)",
+  "4226-19578f75": "Albany (Stop B)",
+  "4065-8a7abe55": "Constellation (Stop A)",
+  "3219-bb8cdfc6": "Sunnynook (Stop A)",
+  "7142-fda95eea": "Akoranga (Stop A)",
+  "1315-1e8f2b03": "Akoranga Dr / Northcote Rd",
+  "1089-d1686dd6": "Esmonde Rd / Lake Rd",
+  "1319-b41ddf26": "Esmonde Rd / Taharoto Rd",
+  "7001-8665a850": "Onewa Rd / Curran St",
+  "7039-8de4104f": "Onewa Domain",
+  "1334-c70b5c82": "Fanshawe St / Halsey St",
+  "1088-d1b8ae2b": "Fanshawe St / Nelson St",
+  "3360-2172b89d": "Tristram St",
+  "7089-8ec85023": "Akoranga (Stop B2)",
+  "7232-5d167cca": "Smales Farm (Stop D)",
+  "4228-9f4125d4": "Constellation (Stop C)",
+  "7037-03bd4aae": "Oteha Valley Rd",
+};
+
+function stopName(stop_id) {
+  return STOP_NAMES[stop_id] || stop_id;
+}
+
+function dirLabel(dir) {
+  return dir === 1 ? "northbound" : "southbound";
+}
+
+function fmtDelay(seconds) {
+  const sign = seconds >= 0 ? "+" : "-";
+  const abs = Math.abs(seconds);
+  const m = Math.floor(abs / 60);
+  const s = abs % 60;
+  if (m > 0) return `${sign}${m}m${String(s).padStart(2, "0")}s`;
+  return `${sign}${s}s`;
+}
+
+function tierClass(tier) {
+  return {
+    normal:    "delay-normal",
+    late:      "delay-late",
+    very_late: "delay-very-late",
+    no_data:   "delay-nodata",
+    unknown:   "delay-nodata",
+    extreme:   "delay-extreme",
+  }[tier] || "delay-nodata";
+}
+
+function badgeClass(tier) {
+  return {
+    normal:    "badge-normal",
+    late:      "badge-late",
+    very_late: "badge-very-late",
+    no_data:   "badge-nodata",
+    unknown:   "badge-nodata",
+    extreme:   "badge-extreme",
+  }[tier] || "badge-nodata";
+}
+
+function badgeLabel(tier) {
+  return {
+    normal:    "on time",
+    late:      "late",
+    very_late: "very late",
+    no_data:   "no data",
+    unknown:   "unknown",
+    extreme:   "check AT",
+  }[tier] || tier;
+}
+
+function groupByRoute(observations) {
+  const groups = {};
+  for (const obs of observations) {
+    const key = `${obs.route_id}__${obs.direction_id}`;
+    if (!groups[key]) groups[key] = { route_id: obs.route_id, direction_id: obs.direction_id, obs: [] };
+    groups[key].obs.push(obs);
+  }
+  // dedupe by stop_id within each group, keep worst (highest percentile or delay)
+  for (const key of Object.keys(groups)) {
+    const seen = {};
+    for (const obs of groups[key].obs) {
+      const existing = seen[obs.stop_id];
+      if (!existing || (obs.percentile ?? -1) > (existing.percentile ?? -1)) {
+        seen[obs.stop_id] = obs;
+      }
+    }
+    groups[key].obs = Object.values(seen);
+  }
+  return Object.values(groups).sort((a, b) => {
+    if (a.route_id !== b.route_id) return a.route_id.localeCompare(b.route_id);
+    return a.direction_id - b.direction_id;
+  });
+}
+
+function renderGroup(group) {
+  const rows = group.obs.map(obs => `
+    <tr>
+      <td class="col-route">${obs.route_id.split("-")[0]}</td>
+      <td class="col-dir">${dirLabel(obs.direction_id)}</td>
+      <td class="col-stop">${stopName(obs.stop_id)}</td>
+      <td class="col-delay ${tierClass(obs.tier)} flash">${fmtDelay(obs.delay_seconds)}</td>
+      <td class="col-pct">${obs.percentile !== null ? `p${obs.percentile}` : ""}</td>
+      <td class="col-status">
+        <span class="badge ${badgeClass(obs.tier)}">${badgeLabel(obs.tier)}</span>
+      </td>
+    </tr>
+  `).join("");
+
+  return `
+    <p class="section-label">${group.route_id.split("-")[0]} &middot; ${dirLabel(group.direction_id)}</p>
+    <table>
+      <thead>
+        <tr>
+          <th class="col-route">route</th>
+          <th class="col-dir">direction</th>
+          <th>stop</th>
+          <th class="col-delay" style="text-align:right">delay</th>
+          <th class="col-pct" style="text-align:right">pct</th>
+          <th class="col-status" style="text-align:right">status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+async function update() {
+  try {
+    const resp = await fetch("/api/status");
+    const data = await resp.json();
+
+    const errorBar = document.getElementById("error-bar");
+    if (data.error) {
+      errorBar.style.display = "block";
+      errorBar.textContent = `feed error: ${data.error}`;
+    } else {
+      errorBar.style.display = "none";
+    }
+
+    const board = document.getElementById("board");
+    const loading = document.getElementById("loading");
+
+    if (data.observations && data.observations.length > 0) {
+      const groups = groupByRoute(data.observations);
+      board.innerHTML = groups.map(renderGroup).join("");
+      loading.style.display = "none";
+      board.style.display = "block";
+    } else {
+      board.innerHTML = '<p class="empty-note">no active NX1/NX2 trips in the feed right now</p>';
+      loading.style.display = "none";
+      board.style.display = "block";
+    }
+
+    document.getElementById("update-time").textContent =
+      `updated ${data.local_time || new Date().toLocaleTimeString("en-NZ", {hour:"2-digit", minute:"2-digit"})}`;
+
+  } catch (e) {
+    document.getElementById("error-bar").style.display = "block";
+    document.getElementById("error-bar").textContent = `update failed: ${e.message}`;
+  }
+}
+
+update();
+setInterval(update, 3 * 60 * 1000);
+</script>
+</body>
+</html>
