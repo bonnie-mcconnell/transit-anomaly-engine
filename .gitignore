@@ -5,5 +5,4 @@ __pycache__/
 
 *.jsonl
 *.db
-*.txt
 sync_state.json
