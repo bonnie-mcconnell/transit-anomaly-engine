@@ -18,6 +18,9 @@ from datetime import datetime
 
 import psycopg2
 import psycopg2.extras
+from dotenv import load_dotenv
+
+load_dotenv()
 
 LOCAL_DB = os.environ.get("LOCAL_DB", "transit.db")
 SUPABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_URL")
