@@ -79,7 +79,7 @@ def migrate_polls(local_conn, pg_conn):
         """
         INSERT INTO poll_log (polled_at, success, rows_written, error)
         VALUES %s
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (polled_at) DO NOTHING
         """,
         rows,
     )
