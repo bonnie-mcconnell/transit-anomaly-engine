@@ -65,7 +65,7 @@ def check_poll_log(conn):
     """
     gaps = conn.execute(gap_query).fetchall()
     if gaps:
-        print(f"\n  largest gaps between successful polls:")
+        print(f"\n  largest gaps between consecutive poll attempts:")
         for g in gaps:
             print(f"    {g[0]} -> {g[1]} ({g[2]:.0f} min)")
     else:
