@@ -72,7 +72,8 @@ def report(db_path):
     conn = sqlite3.connect(db_path)
     cells = load_observations(conn)
 
-    generated_at = datetime.now(AUCKLAND_TZ).strftime("%Y-%m-%d %H:%M NZST")
+    now_local = datetime.now(AUCKLAND_TZ)
+    generated_at = f"{now_local.strftime('%Y-%m-%d %H:%M')} {now_local.tzname()}"
     row_count = conn.execute("SELECT COUNT(*) FROM raw_stop_events").fetchone()[0]
     poll_count = conn.execute("SELECT COUNT(*) FROM poll_log WHERE success=1").fetchone()[0]
     conn.close()
