@@ -29,7 +29,7 @@ interval, let alone the 180s production interval (see Ingestion below).
 Spec says stop_time_update is a repeated field (list). In practice it's
 always a single object. Checked across ~23k samples, only missing on
 cancelled trips, never a list. Parser should expect a dict and not
-crash if it ever isn't one, but I'm not building heavy handling for a
+crash if it ever isn't one, but I didn't build heavy handling for a
 case I haven't seen yet.
 
 trip-level delay and stop-level delay are different numbers, not the
@@ -73,7 +73,7 @@ p99: 929s
 p99.9: 3425s
 max: 6442s
 
-Originally guessed the afternoon survey's huge gap between p99.9 and
+Originally I guessed that the afternoon survey's huge gap between p99.9 and
 max was a midnight rollover bug, trip start_time near 00:00 and the
 date field off by a day. That guess was wrong. The rush hour survey's
 extreme samples logged full trip detail and none of them have
@@ -85,10 +85,8 @@ things:
 
 One trip (route 917-203) showed delay climbing steadily poll over poll
 for 20+ minutes straight, 3605s up to 5231s and still rising when the
-survey ended. That's a bus genuinely falling further behind in real
-time, not bad data. This is the most interesting single observation
-from the whole survey and the project should be able to surface this
-kind of thing, not filter it out.
+survey ended. That's a bus actually falling further behind in real
+time, not bad data. This is the kind of observation this project should surface and not filter out.
 
 Two other trips (route 101-202 and S007F-203) showed large persistent
 negative delays, around -6300 to -6450s, flat for many polls, then the
@@ -105,11 +103,11 @@ more time right now, just noting it's confirmed not the midnight
 theory.
 
 Given this, treating anything over 3600s as garbage to drop was the
-wrong model. New plan: still flag anything over 3600s as is_extreme so
+wrong model. The new approach is to still flag anything over 3600s as is_extreme so
 it doesn't quietly pollute baseline stats, but keep it in the raw
 table and surface it, since at least some of these are the real
 events the whole project is supposed to catch. The negative, vanishing
-kind might genuinely be noise, the climbing kind clearly isn't, and a
+kind might actually be noise, the climbing kind clearly isn't, and a
 flat threshold can't tell them apart on its own. Worth coming back to
 once there's a real backlog of these to look at trip-by-trip rather
 than guessing from a couple of examples.
@@ -117,7 +115,7 @@ than guessing from a couple of examples.
 ## Unit of analysis
 
 Storing at stop level, one row per trip per stop per poll. Not trip
-snapshots. Reason: snapshots of the same trip a couple minutes apart
+snapshots, as snapshots of the same trip a couple minutes apart
 aren't independent. If a bus is 3 min late at one stop it's probably
 still ~3 min late two minutes later, so treating those as separate
 samples for a baseline would make the variance look smaller than it
@@ -156,7 +154,7 @@ weighting are rough guesses, not measured.
 Minimum N=20 observations per (route, direction, stop, day_type, bucket)
 cell before showing a real status. Below that it just says "not enough
 data yet." Haven't stress tested whether 20 is actually the right
-number yet either, just a starting point.
+number yet either; its just a starting point.
 
 ## Status logic
 
@@ -165,11 +163,18 @@ cell, not a Z-score, because delay isn't close to normal, it's
 skewed and AT's own docs say it goes negative pretty often (buses
 running early). A Z-score assumes a shape this data doesn't have.
 
-Tiers, picked by feel not derived from anything:
+Tiers (picked by feel not derived from anything):
 < 75th percentile: normal
 75-95th: running late
 > 95th: significantly delayed
 N < 20: not enough data
+
+Quartiles for the IQR use nearest-rank indexing (sorted_delays[n//4] and
+sorted_delays[3n//4]) rather than linearly interpolated quantiles. Chosen
+to avoid a numpy dependency for something this simple, and the gap
+between the two methods is negligible once n clears MIN_N=20. This means
+I expect the IQR figures in the README won't reproduce bit-for-bit if someone
+cross-checks them with numpy.percentile's default method.
 
 ## Ingestion and architecture
 
@@ -193,10 +198,28 @@ Render spin down after 15 minutes of inactivity; a separate GitHub
 Actions workflow pings the URL every 10 minutes during Auckland waking
 hours to keep it alive.
 
-Known gap: when the laptop is fully off or off wifi, ingest polls are
+As a known gap, when the laptop is fully off or off wifi, ingest polls are
 missed. Task Scheduler's "run as soon as possible after a missed start"
 catches most short gaps but not multi-hour overnight ones. This is
 documented, accepted, and shows up visibly in poll_log.
+
+init_schema() runs under a Postgres advisory lock (arbitrary key, see
+db.py). ingest.py and materialise.py both call it on every run and can
+genuinely overlap. Found by actually running 15 concurrent processes
+against a fresh database rather than reasoning about the SQL by eye:
+CREATE TABLE/INDEX IF NOT EXISTS is not safe under concurrent first-time
+creation, and it doesn't fail with a friendly "already exists" - 11 of
+15 failed with a raw unique_violation (23505) on internal catalog
+indexes (pg_type_typname_nsp_index, pg_class_relname_nsp_index), since
+the IF NOT EXISTS check and the actual catalog insert aren't atomic
+together. A first attempt patched two of the affected statements
+individually; that was incomplete, since the unguarded CREATE TABLE
+itself raced too, and a failure there aborts the transaction before the
+later statements even run. The advisory lock around the whole block
+fixed it: retested with 15 concurrent processes, 0 failures. Practical
+impact right now is low since the Supabase tables already exist and
+this only matters on a genuinely fresh database, but it's the kind of
+thing a future Postgres integration test would hit.
 
 ## Not decided yet
 
@@ -227,7 +250,7 @@ This is a real limitation: the current model doesn't know which stops
 are terminus stops. Worth fixing later by pulling route stop sequence
 data from the static API, but not blocking anything for now.
 
-The actually interesting finding: NX1 dir=1 (northbound, away from
+The actually interesting finding is that NX1 dir=1 (northbound, away from
 the city toward the Shore) shows a consistent delay pattern at busway
 stations during afternoon peak. At bucket=17 (5-6pm Auckland time):
 
@@ -253,8 +276,7 @@ lower median delays at the same time buckets, consistent with the bus
 starting each trip roughly on schedule and accumulating delay along the
 route rather than starting late.
 
-Also found and fixed a timezone bug in aggregate.py and check_health.py
-during this session: polled_at is stored UTC, Auckland is UTC+12 in
+Also found and fixed a timezone bug in aggregate.py and check_health.py: polled_at is stored UTC, Auckland is UTC+12 in
 winter, so every cell was being bucketed 12 hours wrong. Fixed with
 zoneinfo. The raw data in transit.db is fine, the error was only in
 the analysis layer.
