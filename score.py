@@ -25,9 +25,7 @@ import db
 
 load_dotenv()
 
-API_KEY = os.environ["AT_API_KEY"]
 FEED_URL = "https://api.at.govt.nz/realtime/legacy/"
-HEADERS = {"Ocp-Apim-Subscription-Key": API_KEY}
 
 TRACKED_ROUTES = {"NX1-203", "NX2-207"}
 EXTREME_DELAY_THRESHOLD = 3600
@@ -125,11 +123,18 @@ def score_feed(baselines):
     current_day_type = day_type(now_utc)
 
     try:
-        resp = requests.get(FEED_URL, headers=HEADERS, timeout=10)
+        headers = {"Ocp-Apim-Subscription-Key": os.environ["AT_API_KEY"]}
+        resp = requests.get(FEED_URL, headers=headers, timeout=10)
         resp.raise_for_status()
         data = resp.json()
     except requests.exceptions.RequestException as e:
         return {"observations": [], "fetched_at": now_utc.isoformat(), "error": str(e)}
+    except KeyError:
+        return {
+            "observations": [],
+            "fetched_at": now_utc.isoformat(),
+            "error": "AT_API_KEY not set",
+        }
 
     observations = []
 
@@ -196,7 +201,7 @@ def score_feed(baselines):
     return {
         "observations": observations,
         "fetched_at": now_utc.isoformat(),
-        "local_time": local_now.strftime("%H:%M NZST"),
+        "local_time": f"{local_now.strftime('%H:%M')} {local_now.tzname()}",
         "error": None,
     }
 
