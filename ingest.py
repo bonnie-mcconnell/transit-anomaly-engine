@@ -3,9 +3,12 @@ Single-shot ingest: poll the AT realtime feed once and write new
 stop events to the database, then exit.
 
 Meant to be triggered repeatedly by an external scheduler (Windows
-Task Scheduler locally, Render cron in production) rather than
-running its own sleep loop. The poll interval is controlled by the
-scheduler, not this script.
+Task Scheduler on the laptop that does the actual polling) rather
+than running its own sleep loop. The poll interval is controlled by
+the scheduler, not this script. Render only runs the Flask dashboard
+(app.py) as a web service; it has no cron on the free tier, which is
+why baseline computation runs on GitHub Actions instead (see
+materialise.py).
 """
 
 import os
