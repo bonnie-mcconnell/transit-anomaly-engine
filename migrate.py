@@ -40,9 +40,9 @@ def migrate_events(local_conn, pg_conn):
     print(f"migrating {total} stop events...")
 
     inserted = 0
+    cursor = pg_conn.cursor()
     for i in range(0, total, BATCH_SIZE):
         batch = rows[i:i + BATCH_SIZE]
-        cursor = pg_conn.cursor()
         psycopg2.extras.execute_values(
             cursor,
             """
@@ -60,6 +60,7 @@ def migrate_events(local_conn, pg_conn):
         inserted += len(batch)
         print(f"  {inserted}/{total}")
 
+    cursor.close()
     return total
 
 
