@@ -2,8 +2,8 @@
 Flask dashboard for the NX1/NX2 delay tracker.
 
 Two routes:
-  GET /              serves the HTML dashboard
-  GET /api/status    returns current scored observations as JSON
+  GET /             serves the HTML dashboard
+  GET /api/status   returns current scored observations as JSON
 
 The HTML page polls /api/status every 3 minutes via fetch() and
 updates the table in place without a full reload.

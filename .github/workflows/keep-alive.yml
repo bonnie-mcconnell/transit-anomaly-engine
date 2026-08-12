@@ -5,8 +5,8 @@ on:
     # Every 10 minutes during Auckland waking hours.
     # 18:00-11:00 UTC = 6am-11pm NZST (UTC+12 winter).
     # Covers the full day without pinging at 3am NZ time.
-    # GitHub Actions cron minimum interval is 5 minutes;
-    # 10 minutes is well within Render's 15-minute sleep window.
+    # GitHub Actions cron minimum interval is 5 minutes
+    # 10 minutes is within Render's 15-minute sleep window.
     - cron: "*/10 18-23,0-11 * * *"
   workflow_dispatch:
 

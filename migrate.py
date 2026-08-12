@@ -1,8 +1,8 @@
 """
 One-time migration: push all data from local transit.db to Supabase.
 
-Run this once after setting up Supabase to seed it with the existing
-collected data. Safe to re-run; the unique constraints on both tables
+Ran this once after setting up Supabase to seed it with the existing
+collected data. Safe to re-run, the unique constraints on both tables
 skip any rows that already exist in Supabase.
 
 Usage:

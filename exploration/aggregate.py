@@ -178,8 +178,8 @@ if __name__ == "__main__":
         print("\nno cells have enough data yet")
         sys.exit(0)
 
-    medians = sorted(b["median"] for _, b in ready)
-    iqr_widths = sorted(b["iqr_high"] - b["iqr_low"] for _, b in ready)
+    by_median = sorted(ready, key=lambda x: x[1]["median"])
+    medians = [b["median"] for _, b in by_median]  # derived from the sorted list
     ns = sorted(b["n"] for _, b in ready)
 
     def pct_val(lst, pct):

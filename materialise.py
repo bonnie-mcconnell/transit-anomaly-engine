@@ -90,12 +90,12 @@ def load_events(conn):
 def compute_baseline(observations):
     """
     Note on the IQR: q1/q3 use nearest-rank indexing (non_extreme[n//4] and
-    non_extreme[3n//4]), not linear interpolation. This is a deliberate
-    simplification, not an oversight: it needs no numpy dependency and is
+    non_extreme[3n//4]), not linear interpolation. The simplication is deliberate
+    because it means this engine needs no numpy dependency and is
     close enough to an interpolated quantile once n is a few dozen or more
     (which MIN_N=20 already requires). It will not exactly match
     numpy.percentile's default (linear) method if anyone cross-checks the
-    README's IQR figures against numpy - that's expected, not a bug.
+    README's IQR figures against numpy.
     """
     n_total = len(observations)
     non_extreme = sorted(o["delay"] for o in observations if not o["is_extreme"])

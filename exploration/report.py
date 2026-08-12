@@ -61,11 +61,11 @@ def bucket_label(bucket):
 
 
 def fmt_delay(seconds):
-    sign = "+" if seconds >= 0 else ""
+    sign = "+" if seconds >= 0 else "-"
     m, s = divmod(abs(int(seconds)), 60)
     if m > 0:
-        return f"{sign}{'-' if seconds < 0 else ''}{m}m{s:02d}s"
-    return f"{sign}{int(seconds)}s"
+        return f"{sign}{m}m{s:02d}s"
+    return f"{sign}{abs(int(seconds))}s"
 
 
 def report(db_path):

@@ -12,8 +12,8 @@ In local development, set DATABASE_URL=transit.db (or don't set it
 at all, the default is transit.db). In production on Render, set it
 to the Supabase connection string.
 
-One real difference between the two backends that callers need to
-know: SQLite uses ? as the parameter placeholder, Postgres uses %s.
+Difference between the backends: 
+SQLite uses ? as the parameter placeholder, Postgres uses %s.
 This module exposes a PLACEHOLDER constant so queries can be written
 portably without hardcoding either.
 """
@@ -62,7 +62,7 @@ def init_schema(conn):
 
     On Postgres, the whole block runs under a session advisory lock,
     since ingest.py and materialise.py both call this on every run and
-    can genuinely race on a brand-new database. See DESIGN.md for why.
+    can race on a brand-new database. See DESIGN.md for why.
     """
     if _is_postgres:
         cursor = conn.cursor()
@@ -70,7 +70,7 @@ def init_schema(conn):
         # advisory lock is ever added elsewhere in this codebase, pick a
         # different constant so the two don't collide (locks are scoped
         # per-database, not per-server, so this only needs to be unique
-        # within this project's own database).
+        # within transport-anomaly-engine's own database).
         LOCK_KEY = 847_291_003
         cursor.execute("SELECT pg_advisory_lock(%s)", (LOCK_KEY,))
         try:
@@ -112,17 +112,16 @@ def init_schema(conn):
                 )
             """)
             # Patches poll_log tables created before UNIQUE(polled_at)
-            # existed (e.g. your existing Supabase table). Checked via
+            # existed (e.g existing Supabase table). Checked via
             # pg_constraint directly since the whole block is already
             # serialized by the advisory lock above, so no separate
             # race-handling is needed here anymore.
             #
-            # This can still fail for a real reason, not a race: if
-            # poll_log already has duplicate polled_at rows (e.g. from
-            # migrate.py's ON CONFLICT DO NOTHING silently duplicating
-            # rows before it had a real constraint to target), adding
-            # the constraint is a genuine data conflict, not something
-            # retrying or locking fixes. Caught here and turned into an
+            # This can still fail: if poll_log already has duplicate 
+            # polled_at rows (e.g from migrate.py's ON CONFLICT DO NOTHING 
+            # silently duplicating rows before it had a real constraint to 
+            # target), adding the constraint is a data conflict, not fixed by
+            # retrying or locking. Caught here and turned into an
             # actionable error instead of a cryptic Postgres one, since
             # deleting rows to make it pass isn't this function's job.
             try:
@@ -145,8 +144,7 @@ def init_schema(conn):
                     "constraint can't be added. Find them with:\n"
                     "  SELECT polled_at, COUNT(*) FROM poll_log "
                     "GROUP BY polled_at HAVING COUNT(*) > 1;\n"
-                    "then remove the duplicates before init_schema() can "
-                    "proceed."
+                    "then remove the duplicates before init_schema() can proceed."
                 ) from e
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS baselines (
@@ -167,11 +165,11 @@ def init_schema(conn):
             """)
             conn.commit()
         finally:
-            # conn.rollback() before the unlock matters: a genuine (non-race)
+            # must conn.rollback() before unlock as a (non-race)
             # failure above leaves the transaction aborted, and
             # pg_advisory_unlock can't run until that clears. Session-level
             # advisory locks survive a rollback, so this doesn't lose the
-            # lock - it just lets the connection release it properly instead
+            # lock, it just lets the connection release it properly instead
             # of leaving that to happen implicitly on connection close.
             conn.rollback()
             cursor.execute("SELECT pg_advisory_unlock(%s)", (LOCK_KEY,))
