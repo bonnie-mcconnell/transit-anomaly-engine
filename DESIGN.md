@@ -75,7 +75,7 @@ max: 6442s
 
 Originally I guessed that the afternoon survey's huge gap between p99.9 and
 max was a midnight rollover bug, trip start_time near 00:00 and the
-date field off by a day. That guess was wrong. The rush hour survey's
+date field off by a day. That guess was wrong, instead the rush hour survey's
 extreme samples logged full trip detail and none of them have
 start_times anywhere near midnight, they're all normal morning trips
 (07:43, 07:50, 06:25, 07:15, 07:20).
@@ -98,15 +98,13 @@ schedule line up fine, this isn't a lookup error or a rollover. Best
 guess now is a vehicle/trip matching problem on AT's side, a vehicle
 got assigned a trip_id it isn't actually running, or there's a GPS/
 odometer fault making the system think the vehicle is further along
-than it is. Haven't fully nailed this down and don't think it's worth
-more time right now, just noting it's confirmed not the midnight
-theory.
+than it is.
 
 Given this, treating anything over 3600s as garbage to drop was the
 wrong model. The new approach is to still flag anything over 3600s as is_extreme so
 it doesn't quietly pollute baseline stats, but keep it in the raw
 table and surface it, since at least some of these are the real
-events the whole project is supposed to catch. The negative, vanishing
+events the project is supposed to catch. The negative, vanishing
 kind might actually be noise, the climbing kind clearly isn't, and a
 flat threshold can't tell them apart on its own. Worth coming back to
 once there's a real backlog of these to look at trip-by-trip rather
@@ -134,7 +132,7 @@ getting noisy.
 
 Tested bucket size against synthetic data before waiting on real
 collection to find out the hard way. Generated fake stop events shaped
-like the real measured percentiles (see generate_synthetic.py), 18
+like the real measured percentiles, 18
 days, both routes, 8 stops each. At 30-min buckets: 2201 total cells,
 median n per cell was only 6, and just 272 of them (12.4%) cleared
 N=20. At 60-min buckets: 1156 cells, median n=11, 354 cleared N=20
@@ -154,16 +152,16 @@ weighting are rough guesses, not measured.
 Minimum N=20 observations per (route, direction, stop, day_type, bucket)
 cell before showing a real status. Below that it just says "not enough
 data yet." Haven't stress tested whether 20 is actually the right
-number yet either; its just a starting point.
+number yet either, so its just a starting point.
 
 ## Status logic
 
 Showing percentile rank within the historical distribution for that
 cell, not a Z-score, because delay isn't close to normal, it's
 skewed and AT's own docs say it goes negative pretty often (buses
-running early). A Z-score assumes a shape this data doesn't have.
+running early). A Z-score assumes a normal distribution that this data doesn't have.
 
-Tiers (picked by feel not derived from anything):
+Tiers:
 < 75th percentile: normal
 75-95th: running late
 > 95th: significantly delayed
@@ -187,25 +185,24 @@ The database is Supabase Postgres in production, with the same schema
 accessible locally via SQLite for development and testing. db.py
 handles this: if DATABASE_URL looks like a postgres URL it uses
 psycopg2, otherwise treats the value as a SQLite file path. Nothing
-else in the codebase imports sqlite3 or psycopg2 directly.
+else in the dashboards codebase imports sqlite3 or psycopg2 directly.
 
 Baseline computation runs nightly on GitHub Actions (materialise.py),
-not on the laptop or on Render. GitHub Actions is free for public
-repos and doesn't require any always-on server for a scheduled job.
+not on the laptop or on Render.
 
 The dashboard runs on Render's free web service. Free web services on
-Render spin down after 15 minutes of inactivity; a separate GitHub
-Actions workflow pings the URL every 10 minutes during Auckland waking
+Render spin down after 15 minutes of inactivity so I added a separate GitHub
+Actions workflow that pings the URL every 10 minutes during Auckland waking
 hours to keep it alive.
 
 As a known gap, when the laptop is fully off or off wifi, ingest polls are
 missed. Task Scheduler's "run as soon as possible after a missed start"
 catches most short gaps but not multi-hour overnight ones. This is
-documented, accepted, and shows up visibly in poll_log.
+documented, accepted, and shows up visibly in poll_log. The effect on baselines
+is small given the overall volume but worth acknowledging.
 
 init_schema() runs under a Postgres advisory lock (arbitrary key, see
-db.py). ingest.py and materialise.py both call it on every run and can
-genuinely overlap. Found by actually running 15 concurrent processes
+db.py). ingest.py and materialise.py both call it on every run and can overlap. This was found by actually running 15 concurrent processes
 against a fresh database rather than reasoning about the SQL by eye:
 CREATE TABLE/INDEX IF NOT EXISTS is not safe under concurrent first-time
 creation, and it doesn't fail with a friendly "already exists" - 11 of
@@ -213,13 +210,11 @@ creation, and it doesn't fail with a friendly "already exists" - 11 of
 indexes (pg_type_typname_nsp_index, pg_class_relname_nsp_index), since
 the IF NOT EXISTS check and the actual catalog insert aren't atomic
 together. A first attempt patched two of the affected statements
-individually; that was incomplete, since the unguarded CREATE TABLE
+individually, which was incomplete, since the unguarded CREATE TABLE
 itself raced too, and a failure there aborts the transaction before the
 later statements even run. The advisory lock around the whole block
-fixed it: retested with 15 concurrent processes, 0 failures. Practical
-impact right now is low since the Supabase tables already exist and
-this only matters on a genuinely fresh database, but it's the kind of
-thing a future Postgres integration test would hit.
+fixed it, confirmed by retesting with 15 concurrent processes, 0 failures. Doesn't affect the database now as the Supabase tables already exist and
+this only matters on a fresh database, but a future Postgres integration test could handle it.
 
 ## Not decided yet
 
@@ -229,16 +224,22 @@ thing a future Postgres integration test would hit.
 - terminus stops: the current model doesn't know which stops are route
   endpoints, so a bus arriving early at its final stop looks like
   "running early" rather than being filtered out. Worth fixing by
-  pulling stop sequence data from the static API, but not urgent.
+  pulling stop sequence data from the static API.
+
+Longer collection will improve
+baseline stability and surface patterns that don't show up in five
+days (school holidays, weather effects, seasonal variation). The
+cold-start threshold of N>=20 means new cells show "insufficient
+data" until enough observations accumulate.
 
 ## Real findings so far (updated 05/07)
 
 First real aggregate.py run against transit.db after ~4 days of
 collection (29,595 rows, 569 successful polls, 204 cells over N=20).
 
-One thing that jumped out immediately: a cluster of NX2 dir=0 cells
+One thing that jumped out immediately to me was a cluster of NX2 dir=0 cells
 at stop 7147-4e9003b4 showing median delays of -400s to -550s across
-every time bucket. Looked it up, it's "Stop E Auckland Universities",
+every time bucket. It's "Stop E Auckland Universities",
 the city-centre terminus for NX2. A bus arriving consistently early
 at its final stop isn't the same thing as a bus arriving early at a
 mid-route stop where a commuter is waiting. At a terminus, early
@@ -246,11 +247,7 @@ arrival just means the driver made good time. This stop should
 probably be excluded from the status display, or treated differently,
 since the "running early" signal isn't actionable there.
 
-This is a real limitation: the current model doesn't know which stops
-are terminus stops. Worth fixing later by pulling route stop sequence
-data from the static API, but not blocking anything for now.
-
-The actually interesting finding is that NX1 dir=1 (northbound, away from
+The interesting finding is that NX1 dir=1 (northbound, away from
 the city toward the Shore) shows a consistent delay pattern at busway
 stations during afternoon peak. At bucket=17 (5-6pm Auckland time):
 
@@ -260,12 +257,12 @@ stations during afternoon peak. At bucket=17 (5-6pm Auckland time):
   Sunnynook (Stop B):       median +384s (~6.4 min late), IQR [260, 460]
 
 These are all Northern Busway stations in northbound order, and delay
-increases progressively from south to north, which is what accumulated
-congestion along a route looks like. The pattern worsens from bucket=16
+increases progressively from south to north, which shows accumulated
+congestion along a route. The pattern worsens from bucket=16
 to bucket=17 (4-5pm vs 5-6pm), consistent with delay building as the
 peak deepens rather than random incidents.
 
-The tight IQRs on these cells (e.g. Constellation's IQR of [408, 572]
+The tight IQRs on these cells (e.g Constellation's IQR of [408, 572]
 means half of all observed trips fell between 7 and 9.5 minutes late)
 mean this is a repeatable structural pattern, not noise. A commuter
 catching the NX1 northbound at Constellation at 5pm should reliably
