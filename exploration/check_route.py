@@ -24,16 +24,9 @@ def lookup_route(route_id):
     print(f"    type:       {data.get('route_type')}")
 
 
-def search_routes_by_keyword(keyword):
-    # The v3 API doesn't document a text-search endpoint, so this is a
-    # placeholder for a manual fallback: list a handful of known/guessed
-    # candidate IDs instead of searching freely.
-    print(f"(No documented search-by-name endpoint; checking known candidates instead)")
-
-
 if __name__ == "__main__":
     print("Checking candidate Northern Express route IDs:\n")
-    # We've confirmed NX1-203 appears live in the realtime feed already.
+    # confirmed NX1-203 appears live in the realtime feed already.
     # Trying common variants for NX2 and a couple of plausible alternates.
     candidates = ["NX1-203", "NX2-203", "NX1-209", "NX2-209"]
     for rid in candidates:

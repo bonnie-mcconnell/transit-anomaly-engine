@@ -9,9 +9,14 @@ the scheduler, not this script. Render only runs the Flask dashboard
 (app.py) as a web service; it has no cron on the free tier, which is
 why baseline computation runs on GitHub Actions instead (see
 materialise.py).
+
+On transient network failures, fetch_feed() retries with exponential backoff 
+before giving up, allows recovery from connection blips without waiting
+for next scheduled run. 
 """
 
 import os
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -28,18 +33,44 @@ HEADERS = {"Ocp-Apim-Subscription-Key": API_KEY}
 TRACKED_ROUTES = {"NX1-203", "NX2-207"}
 EXTREME_DELAY_THRESHOLD = 3600
 
+# how many times to attempt fetch feed before giving up
+# delay between attempts: 1s, then 4s (exponential backoff, base 2, starting at 1s)
+MAX_ATTEMPTS = 3
+BACKOFF_BASE_SECONDS = 1
+
 
 def fetch_feed():
-    resp = requests.get(FEED_URL, headers=HEADERS, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+    """
+    Fetch live AT feed. Retries up to MAX_ATTEMPTS times on network
+    errors, with exponential backoff between attempts.
+
+    Raises the final exception if all attempts fail, so the caller can
+    log it and exit cleanly.
+    """
+    last_exc = None
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            resp = requests.get(FEED_URL, headers=HEADERS, timeout=10)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            last_exc = e
+            if attempt < MAX_ATTEMPTS - 1:
+                wait = BACKOFF_BASE_SECONDS * (2 ** attempt)
+                print(
+                    f"{datetime.now().isoformat()}: attempt {attempt + 1} failed "
+                    f"({e}), retrying in {wait} s"
+                )
+                time.sleep(wait)
+
+    raise last_exc or RuntimeError("fetch_feed called with MAX_ATTEMPTS <= 0")
 
 
 def extract_rows(data):
     """
     Pull stop events for tracked routes out of a raw feed response.
 
-    A few non-obvious things this handles:
+    Handles:
 
     - schedule_relationship != 0 (cancelled/skipped trips): kept in
       the database with trip_level_delay set to NULL rather than the
@@ -168,7 +199,7 @@ def main():
         print(f"{datetime.now().isoformat()}: {len(rows)} rows, {extreme_count} extreme")
     except requests.exceptions.RequestException as e:
         log_poll(conn, success=False, error=str(e))
-        print(f"{datetime.now().isoformat()}: poll failed: {e}")
+        print(f"{datetime.now().isoformat()}: all {MAX_ATTEMPTS} attempts failed: {e}")
     finally:
         conn.close()
 
