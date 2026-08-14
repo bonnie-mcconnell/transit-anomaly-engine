@@ -42,7 +42,7 @@ trip's delay is then scored by its percentile rank within that
 historical distribution. The dashboard shows current status per stop
 and updates every 3 minutes.
 
-The cold-start threshold is N >= 20 observations per cell. Below that,
+The cold-start threshold is N >= 20 observations and two non-extreme observations per cell. Below that,
 the dashboard shows no status rather than a number built on too little
 data.
 

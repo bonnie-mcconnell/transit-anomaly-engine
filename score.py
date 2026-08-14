@@ -22,31 +22,11 @@ import requests
 from dotenv import load_dotenv
 
 import db
+from config import TRACKED_ROUTES, EXTREME_DELAY_THRESHOLD, MIN_N, to_local, time_bucket, day_type
 
 load_dotenv()
 
 FEED_URL = "https://api.at.govt.nz/realtime/legacy/"
-
-TRACKED_ROUTES = {"NX1-203", "NX2-207"}
-EXTREME_DELAY_THRESHOLD = 3600
-AUCKLAND_TZ = ZoneInfo("Pacific/Auckland")
-BUCKET_MINUTES = 60
-
-
-def to_local(dt):
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(AUCKLAND_TZ)
-
-
-def time_bucket(dt):
-    local = to_local(dt)
-    return (local.hour * 60 + local.minute) // BUCKET_MINUTES
-
-
-def day_type(dt):
-    local = to_local(dt)
-    return "weekend" if local.weekday() >= 5 else "weekday"
 
 
 def percentile_rank(value, sorted_values):

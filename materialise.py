@@ -17,30 +17,9 @@ Runs nightly. Safe to re-run at any time since it upserts.
 import json
 import statistics
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
 import db
-
-AUCKLAND_TZ = ZoneInfo("Pacific/Auckland")
-BUCKET_MINUTES = 60
-MIN_N = 20
-
-
-def to_local(polled_at_str):
-    dt = datetime.fromisoformat(polled_at_str)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(AUCKLAND_TZ)
-
-
-def time_bucket(dt):
-    local = to_local(dt) if isinstance(dt, str) else dt
-    return (local.hour * 60 + local.minute) // BUCKET_MINUTES
-
-
-def day_type(dt):
-    local = to_local(dt) if isinstance(dt, str) else dt
-    return "weekend" if local.weekday() >= 5 else "weekday"
+from config import MIN_N, to_local, time_bucket, day_type
 
 
 def load_events(conn):
@@ -90,8 +69,8 @@ def load_events(conn):
 def compute_baseline(observations):
     """
     Note on the IQR: q1/q3 use nearest-rank indexing (non_extreme[n//4] and
-    non_extreme[3n//4]), not linear interpolation. The simplication is deliberate
-    because it means this engine needs no numpy dependency and is
+    non_extreme[3n//4]), not linear interpolation. The simplication means 
+    this engine needs no numpy dependency and is
     close enough to an interpolated quantile once n is a few dozen or more
     (which MIN_N=20 already requires). It will not exactly match
     numpy.percentile's default (linear) method if anyone cross-checks the
