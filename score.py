@@ -2,10 +2,9 @@
 Live scoring: fetches the current AT feed and scores each active
 NX1/NX2 trip against the pre-computed baselines.
 
-The core idea: for a trip currently at a given stop, what percentile
+For a trip currently at a given stop, calculates what percentile
 of historical observations for that (stop, bucket, day_type) cell
-does its current delay fall into? That percentile rank, not the raw
-seconds, is what gets shown on the dashboard.
+ its current delay falls into. That percentile rank is shown on the dashboard.
 
 Returns a list of scored observations ready for the dashboard to
 render. If the feed is unreachable, returns an empty list with an
@@ -14,19 +13,24 @@ error field rather than crashing.
 
 import bisect
 import json
-import os
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
 
 import db
-from config import TRACKED_ROUTES, EXTREME_DELAY_THRESHOLD, MIN_N, to_local, time_bucket, day_type
+from at_client import fetch_at_feed
+from config import (
+    TRACKED_ROUTES, 
+    EXTREME_DELAY_THRESHOLD, 
+    MAX_ATTEMPTS,
+    BACKOFF_BASE_SECONDS,
+    to_local, 
+    time_bucket, 
+    day_type
+)
 
 load_dotenv()
-
-FEED_URL = "https://api.at.govt.nz/realtime/legacy/"
 
 
 def percentile_rank(value, sorted_values):
@@ -103,10 +107,7 @@ def score_feed(baselines):
     current_day_type = day_type(now_utc)
 
     try:
-        headers = {"Ocp-Apim-Subscription-Key": os.environ["AT_API_KEY"]}
-        resp = requests.get(FEED_URL, headers=headers, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
+        data = fetch_at_feed(MAX_ATTEMPTS, BACKOFF_BASE_SECONDS)
     except requests.exceptions.RequestException as e:
         return {"observations": [], "fetched_at": now_utc.isoformat(), "error": str(e)}
     except KeyError:

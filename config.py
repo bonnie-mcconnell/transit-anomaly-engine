@@ -1,21 +1,22 @@
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+
 TRACKED_ROUTES = {"NX1-203", "NX2-207"}
 EXTREME_DELAY_THRESHOLD = 3600
+
+AUCKLAND_TZ = ZoneInfo("Pacific/Auckland")
+BUCKET_MINUTES = 60
+MIN_N = 20
 
 # how many times to attempt fetch feed before giving up
 # delay between attempts: 1s, then 4s (exponential backoff, base 2, starting at 1s)
 MAX_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 1
 
-AUCKLAND_TZ = ZoneInfo("Pacific/Auckland")
-BUCKET_MINUTES = 60
-MIN_N = 20
-
 
 def to_local(polled_at_str):
-    """"Convert a UTC timestamp string to Auckland local time."""
+    """Convert a UTC timestamp string to Auckland local time."""
     dt = datetime.fromisoformat(polled_at_str)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)

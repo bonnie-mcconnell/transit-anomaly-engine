@@ -6,58 +6,25 @@ Meant to be triggered repeatedly by an external scheduler (Windows
 Task Scheduler on the laptop that does the actual polling) rather
 than running its own sleep loop. The poll interval is controlled by
 the scheduler, not this script. Render only runs the Flask dashboard
-(app.py) as a web service; it has no cron on the free tier, which is
-why baseline computation runs on GitHub Actions instead (see
-materialise.py).
+(app.py) as a web service, baseline computation runs on GitHub Actions
+(see materialise.py).
 
-On transient network failures, fetch_feed() retries with exponential backoff 
-before giving up, allows recovery from connection blips without waiting
-for next scheduled run. 
+On transient network failures, fetch_at_feed() (shared with score.py, 
+see at_client.py) retries with exponential backoff before giving up, 
+allowing recovery from connection blips without waiting for 
+the next scheduled run. 
 """
 
-import os
-import time
 from datetime import datetime, timezone
 
 import requests
 from dotenv import load_dotenv
 
 import db
+from at_client import fetch_at_feed
 from config import TRACKED_ROUTES, EXTREME_DELAY_THRESHOLD, MAX_ATTEMPTS, BACKOFF_BASE_SECONDS
 
 load_dotenv()
-
-API_KEY = os.environ["AT_API_KEY"]
-FEED_URL = "https://api.at.govt.nz/realtime/legacy/"
-HEADERS = {"Ocp-Apim-Subscription-Key": API_KEY}
-
-
-def fetch_feed():
-    """
-    Fetch live AT feed. Retries up to MAX_ATTEMPTS times on network
-    errors, with exponential backoff between attempts.
-
-    Raises the final exception if all attempts fail, so the caller can
-    log it and exit cleanly.
-    """
-    last_exc = None
-    for attempt in range(MAX_ATTEMPTS):
-        try:
-            resp = requests.get(FEED_URL, headers=HEADERS, timeout=10)
-            resp.raise_for_status()
-            return resp.json()
-        except requests.exceptions.RequestException as e:
-            last_exc = e
-            if attempt < MAX_ATTEMPTS - 1:
-                wait = BACKOFF_BASE_SECONDS * (2 ** attempt)
-                print(
-                    f"{datetime.now().isoformat()}: attempt {attempt + 1} failed "
-                    f"({e}), retrying in {wait} s"
-                )
-                time.sleep(wait)
-
-    raise last_exc or RuntimeError("fetch_feed called with MAX_ATTEMPTS <= 0")
-
 
 def extract_rows(data):
     """
@@ -184,7 +151,7 @@ def main():
     conn = db.get_conn()
     db.init_schema(conn)
     try:
-        data = fetch_feed()
+        data = fetch_at_feed(MAX_ATTEMPTS, BACKOFF_BASE_SECONDS)
         rows = extract_rows(data)
         insert_rows(conn, rows)
         extreme_count = sum(1 for r in rows if r[-2] == 1)

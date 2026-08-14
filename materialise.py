@@ -30,7 +30,6 @@ def load_events(conn):
     skipped. schedule_relationship != 0 rows are skipped entirely
     since their delays are not real operational delays.
     """
-    p = db.PLACEHOLDER
     if db.is_postgres():
         cursor = conn.cursor()
         cursor.execute("""
