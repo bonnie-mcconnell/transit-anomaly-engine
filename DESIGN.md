@@ -161,11 +161,21 @@ cell, not a Z-score, because delay isn't close to normal, it's
 skewed and AT's own docs say it goes negative pretty often (buses
 running early). A Z-score assumes a normal distribution that this data doesn't have.
 
-Tiers:
+Tiers (internal `tier` values, computed in score.py):
 < 75th percentile: normal
-75-95th: running late
-> 95th: significantly delayed
+75-95th: late
+> 95th: very_late
 N < 20: not enough data
+
+The dashboard displays these as "typical" / "unusual" / "very unusual"
+rather than "on time" / "late" / "very late". Early versions used the
+literal wording, but that reads as a contradiction next to the raw
+delay number: a stop that's reliably 7 minutes late every weekday
+afternoon would show delay "+7m" next to a status badge saying "on
+time," which is correct (it's normal *for that stop*) but confusing at
+a glance. The percentile-relative meaning needed to be visually
+distinct from the absolute delay sign, so the display labels changed;
+the underlying tier logic and thresholds above didn't.
 
 Quartiles for the IQR use nearest-rank indexing (sorted_delays[n//4] and
 sorted_delays[3n//4]) rather than linearly interpolated quantiles. Chosen
