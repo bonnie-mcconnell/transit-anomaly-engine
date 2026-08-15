@@ -15,9 +15,14 @@ MAX_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 1
 
 
-def to_local(polled_at_str):
-    """Convert a UTC timestamp string to Auckland local time."""
-    dt = datetime.fromisoformat(polled_at_str)
+def to_local(dt):
+    """
+    Convert a UTC timestamp string to Auckland local time.
+    Accepts either ISO-format string (polled_at values read back
+    from DB) or datetime (datetime.now(timezone.utc) from score.py).
+    """
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(AUCKLAND_TZ)
@@ -25,11 +30,11 @@ def to_local(polled_at_str):
 
 def time_bucket(dt):
     """Return the time bucket for a given datetime or timestamp string."""
-    local = to_local(dt) if isinstance(dt, str) else dt
+    local = to_local(dt)
     return (local.hour * 60 + local.minute) // BUCKET_MINUTES
 
 
 def day_type(dt):
     """Return 'weekday' or 'weekend' for a given datetime or timestamp string."""
-    local = to_local(dt) if isinstance(dt, str) else dt
+    local = to_local(dt)
     return "weekend" if local.weekday() >= 5 else "weekday"
