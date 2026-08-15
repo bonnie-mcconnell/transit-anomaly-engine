@@ -26,6 +26,7 @@ from config import TRACKED_ROUTES, EXTREME_DELAY_THRESHOLD, MAX_ATTEMPTS, BACKOF
 
 load_dotenv()
 
+
 def extract_rows(data):
     """
     Pull stop events for tracked routes out of a raw feed response.
@@ -148,9 +149,10 @@ def log_poll(conn, success, rows_written=None, error=None):
 
 
 def main():
-    conn = db.get_conn()
-    db.init_schema(conn)
+    conn = None
     try:
+        conn = db.get_conn()
+        db.init_schema(conn)
         data = fetch_at_feed(MAX_ATTEMPTS, BACKOFF_BASE_SECONDS)
         rows = extract_rows(data)
         insert_rows(conn, rows)
@@ -158,10 +160,19 @@ def main():
         log_poll(conn, success=True, rows_written=len(rows))
         print(f"{datetime.now().isoformat()}: {len(rows)} rows, {extreme_count} extreme")
     except requests.exceptions.RequestException as e:
-        log_poll(conn, success=False, error=str(e))
+        if conn is not None:
+            log_poll(conn, success=False, error=str(e))
         print(f"{datetime.now().isoformat()}: all {MAX_ATTEMPTS} attempts failed: {e}")
+    except Exception as e:
+        # Catch all: anything that isn't a network error gets logged here
+        # and recorded in poll_log instead of crashing silently
+        # if conn itself failed to connect, conn is still None and cannot log
+        if conn is not None:
+            log_poll(conn, success=False, error=f"{type(e).__name__}: {e}")
+        print(f"{datetime.now().isoformat()}: unexpected error: {type(e).__name__}: {e}")
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 if __name__ == "__main__":

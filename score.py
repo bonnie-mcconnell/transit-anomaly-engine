@@ -98,13 +98,23 @@ def score_feed(baselines):
 
     Returns a dict with:
       - observations: list of scored stop events
-      - fetched_at: ISO timestamp of when the feed was fetched
+      - fetched_at: ISO timestamp of when the feed was fetched, or 
+        None if that step failed
       - error: None if successful, error message string if not
     """
-    now_utc = datetime.now(timezone.utc)
-    local_now = to_local(now_utc)
-    current_bucket = time_bucket(now_utc)
-    current_day_type = day_type(now_utc)
+    try:
+        now_utc = datetime.now(timezone.utc)
+        local_now = to_local(now_utc)
+        current_bucket = time_bucket(now_utc)
+        current_day_type = day_type(now_utc)
+    except Exception as e:
+        # if this step is broken (as in to_local bug), there's no valid
+        # now_utc to report back, use None instead of real timestamp
+        return {
+            "observations": [],
+            "fetched_at": None,
+            "error": f"Internal error computing current time/bucket: {e}",
+        }
 
     try:
         data = fetch_at_feed(MAX_ATTEMPTS, BACKOFF_BASE_SECONDS)
@@ -119,65 +129,74 @@ def score_feed(baselines):
 
     observations = []
 
-    for entity in data.get("response", {}).get("entity", []):
-        tu = entity.get("trip_update")
-        if tu is None:
-            continue
+    try:
+        for entity in data.get("response", {}).get("entity", []):
+            tu = entity.get("trip_update")
+            if tu is None:
+                continue
 
-        trip = tu.get("trip", {})
-        route_id = trip.get("route_id")
-        if route_id not in TRACKED_ROUTES:
-            continue
+            trip = tu.get("trip", {})
+            route_id = trip.get("route_id")
+            if route_id not in TRACKED_ROUTES:
+                continue
 
-        sched_rel = trip.get("schedule_relationship", 0)
-        if sched_rel != 0:
-            continue
+            sched_rel = trip.get("schedule_relationship", 0)
+            if sched_rel != 0:
+                continue
 
-        direction_id = trip.get("direction_id")
-        trip_delay = tu.get("delay")
+            direction_id = trip.get("direction_id")
+            trip_delay = tu.get("delay")
 
-        stu = tu.get("stop_time_update")
-        if isinstance(stu, dict):
-            stop_data = stu
-        elif isinstance(stu, list) and stu:
-            stop_data = stu[0]
-        else:
-            continue
+            stu = tu.get("stop_time_update")
+            if isinstance(stu, dict):
+                stop_data = stu
+            elif isinstance(stu, list) and stu:
+                stop_data = stu[0]
+            else:
+                continue
 
-        stop_id = stop_data.get("stop_id")
-        if not stop_id:
-            continue
+            stop_id = stop_data.get("stop_id")
+            if not stop_id:
+                continue
 
-        dep = (stop_data.get("departure") or {}).get("delay")
-        arr = (stop_data.get("arrival") or {}).get("delay")
-        delay = dep if dep is not None else arr if arr is not None else trip_delay
-        if delay is None:
-            continue
+            dep = (stop_data.get("departure") or {}).get("delay")
+            arr = (stop_data.get("arrival") or {}).get("delay")
+            delay = dep if dep is not None else arr if arr is not None else trip_delay
+            if delay is None:
+                continue
 
-        cell_key = (route_id, direction_id, stop_id, current_day_type, current_bucket)
-        baseline = baselines.get(cell_key)
+            cell_key = (route_id, direction_id, stop_id, current_day_type, current_bucket)
+            baseline = baselines.get(cell_key)
 
-        if baseline is None:
-            pct = None
-            tier = "no_data"
-        elif abs(delay) > EXTREME_DELAY_THRESHOLD:
-            pct = None
-            tier = "extreme"
-        else:
-            pct = percentile_rank(delay, baseline["sorted_delays"])
-            tier = status_tier(pct)
+            if baseline is None:
+                pct = None
+                tier = "no_data"
+            elif abs(delay) > EXTREME_DELAY_THRESHOLD:
+                pct = None
+                tier = "extreme"
+            else:
+                pct = percentile_rank(delay, baseline["sorted_delays"])
+                tier = status_tier(pct)
 
-        observations.append({
-            "route_id": route_id,
-            "direction_id": direction_id,
-            "trip_id": trip.get("trip_id"),
-            "stop_id": stop_id,
-            "delay_seconds": delay,
-            "percentile": pct,
-            "tier": tier,
-            "baseline_median": baseline["median"] if baseline else None,
-            "baseline_n": baseline["n"] if baseline else None,
-        })
+            observations.append({
+                "route_id": route_id,
+                "direction_id": direction_id,
+                "trip_id": trip.get("trip_id"),
+                "stop_id": stop_id,
+                "delay_seconds": delay,
+                "percentile": pct,
+                "tier": tier,
+                "baseline_median": baseline["median"] if baseline else None,
+                "baseline_n": baseline["n"] if baseline else None,
+            })
+    except Exception as e:
+        # malformed/unexpected feed entry shouldn't take endpoint down
+        # report what was scored before error rather than discarding it
+        return {
+            "observations": observations,
+            "fetched_at": now_utc.isoformat(),
+            "error": f"error scoring feed (partial results): {e}"
+        }
 
     return {
         "observations": observations,
@@ -192,10 +211,16 @@ def get_current_status():
     Entry point for the dashboard. Returns scored observations
     grouped by stop for easy rendering.
     """
-    conn = db.get_conn()
+    try:
+        conn = db.get_conn()
+    except Exception as e:
+        return {"observations": [], "fetched_at": None, "error": f"database unavailable: {e}"}
+
     try:
         baselines = load_baselines(conn)
         result = score_feed(baselines)
         return result
+    except Exception as e:
+        return {"observations": [], "fetched_at": None, "error": f"internal error: {e}"}
     finally:
         conn.close()
