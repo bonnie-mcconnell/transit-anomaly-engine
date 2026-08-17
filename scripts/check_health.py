@@ -69,8 +69,10 @@ def check_poll_log(conn):
         """
     else:
         gap_query = """
-            SELECT polled_at, gap_minutes FROM (
-                SELECT polled_at, (julianday(polled_at) - julianday(LAG(polled_at) OVER (ORDER BY polled_at))) * 1440 as gap_minutes)
+            SELECT prev_polled_at, polled_at, gap_minutes FROM (
+                SELECT polled_at, 
+                    LAG(polled_at) OVER (ORDER BY polled_at) as prev_polled_at,
+                    (julianday(polled_at) - julianday(LAG(polled_at) OVER (ORDER BY polled_at))) * 1440 as gap_minutes
                 FROM poll_log
             ) sub
             WHERE gap_minutes > 10
@@ -124,7 +126,7 @@ def check_cold_start(conn):
     over_threshold = sum(1 for obs in cells.values() if len(obs) >= MIN_N)
     ns = sorted(len(obs) for obs in cells.values())
 
-    print(f"   n distribution across cells:")
+    print(f"   total cells seen so far: {total_cells}")
     print(f"   cells with N >= {MIN_N}: {over_threshold} ({over_threshold/total_cells*100:.1f}% of seen)" if total_cells else "")
 
     if ns:
