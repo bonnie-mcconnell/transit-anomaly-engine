@@ -41,9 +41,15 @@ def get_conn():
     """
     Return a database connection. Caller is responsible for closing it.
     For SQLite, also sets row_factory so rows behave like dicts.
+
+    connect_timeout=10 on the Postgres path, without it a connection attempt
+    during a flaky network window (e.g after laptop wakes from sleep) can hang 
+    longer than Task Scheduler poll interval, causing the next scheduled run
+    to collide with a still-running previous one instead of the connection failing fast
+    and being logged as a failed poll.
     """
     if _is_postgres:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
         return conn
     else:
         conn = sqlite3.connect(DATABASE_URL)
@@ -116,14 +122,13 @@ def init_schema(conn):
             # pg_constraint directly since the whole block is already
             # serialized by the advisory lock above, so no separate
             # race-handling is needed here anymore.
-            #
-            # This can still fail: if poll_log already has duplicate 
+
+            # If poll_log already has duplicate 
             # polled_at rows (e.g from migrate.py's ON CONFLICT DO NOTHING 
             # silently duplicating rows before it had a real constraint to 
             # target), adding the constraint is a data conflict, not fixed by
             # retrying or locking. Caught here and turned into an
-            # actionable error instead of a cryptic Postgres one, since
-            # deleting rows to make it pass isn't this function's job.
+            # actionable error, since deleting rows to make it pass isn't this function's job.
             try:
                 cursor.execute("""
                     DO $$
