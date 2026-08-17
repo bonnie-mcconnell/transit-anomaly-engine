@@ -8,7 +8,7 @@ the project is producing real, evolving results.
 """
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 from collections import defaultdict
 
