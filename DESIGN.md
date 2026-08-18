@@ -22,7 +22,7 @@ parsing. So scope = config, not a rewrite, if I want more routes later.
 `https://api.at.govt.nz/realtime/legacy/`, AT's "compat" layer
 over GTFS-RT, not whatever their newest API might be. Rate limit is
 600/min, 35k/week, way more than needed even at the survey-phase 90s
-interval, let alone the 180s production interval.
+interval, let alone the 300s production interval.
 
 ## What the feed actually looks like
 

@@ -6,7 +6,7 @@ scoring) need to fetch the feed the same way.
 
 AT_API_KEY is read from environment inside fetch_at_feed(), not at
 import time, so a caller can import this module even if the key isn't 
-set yet and decide for itself hwo to handle a missing key at call time
+set yet and decide for itself how to handle a missing key at call time
 (for example score.py catches KeyError and returns a friendly dashboard
 error instead of crashing Flask app on startup).
 """

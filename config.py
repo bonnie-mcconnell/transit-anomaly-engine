@@ -10,7 +10,7 @@ BUCKET_MINUTES = 60
 MIN_N = 20
 
 # how many times to attempt fetch feed before giving up
-# delay between attempts: 1s, then 4s (exponential backoff, base 2, starting at 1s)
+# delay between attempts: 1s, then 2s (exponential backoff, base 2, starting at 1s)
 MAX_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 1
 

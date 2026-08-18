@@ -60,7 +60,7 @@ Things to note about the data:
   bucket. Found it by noticing a 4am-5am cell had 800+ observations.
 - A later refactor consolidating duplicated timezone-handling code
   introduced a bug where the live dashboard crashed on every request -
-  and a bug that would have silently sorted
+  and a second, more dangerous bug that would have silently sorted
   every observation into the wrong hour bucket, hidden behind the
   crash. Full root-cause writeup in DESIGN.md and regression tests for
   both now in tests/.
@@ -95,9 +95,10 @@ jobs. A separate GitHub Actions workflow pings the Render URL every
 ```bash
 pip install -r requirements.txt
 cp .env.example .env  # fill in AT_API_KEY and DATABASE_URL
-python ingest.py      # single poll
-python materialise.py # compute baselines
-python app.py         # run dashboard at localhost:5000
+python ingest.py            # single poll
+python materialise.py       # compute baselines
+python app.py                # run dashboard at localhost:5000
+python -m scripts.check_health  # collection health: poll gaps, row counts, cold-start progress
 ```
 
 AT developer API key: https://dev-portal.at.govt.nz/
