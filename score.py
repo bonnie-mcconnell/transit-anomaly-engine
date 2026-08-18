@@ -100,7 +100,8 @@ def score_feed(baselines):
       - observations: list of scored stop events
       - fetched_at: ISO timestamp of when the feed was fetched, or 
         None if that step failed
-      - error: None if successful, error message string if not
+      - error: None if the feed and all entities parsed cleanly,
+        otherwise a message describing what was skipped or what failed
     """
     try:
         now_utc = datetime.now(timezone.utc)
@@ -128,9 +129,19 @@ def score_feed(baselines):
         }
 
     observations = []
+    skipped_count = 0
 
     try:
-        for entity in data.get("response", {}).get("entity", []):
+        entities = data.get("response", {}).get("entity", [])
+    except Exception as e:
+        return {
+            "observations": [],
+            "fetched_at": now_utc.isoformat(),
+            "error": f"error reading feed structure: {e}",
+        }
+
+    for entity in entities:
+        try:
             tu = entity.get("trip_update")
             if tu is None:
                 continue
@@ -189,20 +200,17 @@ def score_feed(baselines):
                 "baseline_median": baseline["median"] if baseline else None,
                 "baseline_n": baseline["n"] if baseline else None,
             })
-    except Exception as e:
-        # malformed/unexpected feed entry shouldn't take endpoint down
-        # report what was scored before error rather than discarding it
-        return {
-            "observations": observations,
-            "fetched_at": now_utc.isoformat(),
-            "error": f"error scoring feed (partial results): {e}"
-        }
+        except Exception:
+            skipped_count += 1
+            continue
+
+    error = f"skipped {skipped_count} malformed feed entit{'y' if skipped_count == 1 else 'ies'}" if skipped_count else None
 
     return {
         "observations": observations,
         "fetched_at": now_utc.isoformat(),
         "local_time": f"{local_now.strftime('%H:%M')} {local_now.tzname()}",
-        "error": None,
+        "error": error,
     }
 
 
